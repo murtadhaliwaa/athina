@@ -19,21 +19,19 @@ async function syncAuthRole(
   supabase: Awaited<ReturnType<typeof createClient>>,
 ) {
   const admin = createAdminClient();
-  let lastError: unknown;
-  for (let i = 0; i < 2; i++) {
-    try {
-      const { error } = await admin.auth.admin.updateUserById(userId, {
-        app_metadata: { role },
-      });
-      if (error) throw error;
-      // حدّث JWT الحالي حتى لا يبقى الدور القديم في الجلسة
-      await supabase.auth.refreshSession();
-      return;
-    } catch (e) {
-      lastError = e;
-    }
+  try {
+    const { error } = await admin.auth.admin.updateUserById(userId, {
+      app_metadata: { role },
+    });
+    if (error) throw error;
+    // حد زمني — لا نعلّق دخول الموبايل على refresh بطيء
+    await Promise.race([
+      supabase.auth.refreshSession(),
+      new Promise<void>((resolve) => setTimeout(resolve, 1500)),
+    ]);
+  } catch (e) {
+    console.error("syncAuthRole failed", e);
   }
-  console.error("syncAuthRole failed", lastError);
 }
 
 const pinLoginSchema = z.object({

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useSyncExternalStore, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { loginOwner, loginWithPin } from "@/actions/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,7 +31,6 @@ function readSavedUsername() {
 }
 
 export function LoginForm() {
-  const router = useRouter();
   const [mode, setMode] = useState<"staff" | "owner">("staff");
   const savedUsername = useSyncExternalStore(
     () => () => undefined,
@@ -72,8 +70,8 @@ export function LoginForm() {
         return;
       }
       localStorage.setItem(USERNAME_KEY, u.toLowerCase());
-      router.replace(result.data.redirectTo);
-      router.refresh();
+      // تنقل كامل أوثق على Safari/الموبايل من router.replace أثناء بث RSC
+      window.location.assign(result.data.redirectTo);
     });
   }
 
@@ -86,8 +84,7 @@ export function LoginForm() {
         setError(result.error);
         return;
       }
-      router.replace(result.data.redirectTo);
-      router.refresh();
+      window.location.assign(result.data.redirectTo);
     });
   }
 

@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { AppError } from "@/lib/errors";
 import { can, type Permission } from "@/lib/auth/permissions";
 import { t } from "@/lib/i18n/ar-iq";
+import { withTimeout } from "@/lib/with-timeout";
 
 const profileSelect = {
   id: true,
@@ -16,19 +17,36 @@ const profileSelect = {
   isActive: true,
 } as const;
 
+async function resolveUserId(): Promise<string | null> {
+  const supabase = await createClient();
+
+  // getClaims يتحقق من JWT محلياً — أسرع بكثير من getUser على الموبايل
+  try {
+    const { data } = await withTimeout(supabase.auth.getClaims(), 1200);
+    const sub = data?.claims?.sub;
+    if (typeof sub === "string" && sub.length > 0) return sub;
+  } catch {
+    /* جرّب getUser */
+  }
+
+  try {
+    const { data } = await withTimeout(supabase.auth.getUser(), 2000);
+    return data.user?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * قراءة الصفحة: مستخدم موثّق من Auth + بروفايل (مرة واحدة لكل طلب عبر cache).
  * للكتابة استخدم requireUser.
  */
 export const getCurrentProfile = cache(async () => {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
+  const userId = await resolveUserId();
+  if (!userId) return null;
 
   return prisma.profile.findUnique({
-    where: { id: user.id },
+    where: { id: userId },
     select: profileSelect,
   });
 });
@@ -36,16 +54,21 @@ export const getCurrentProfile = cache(async () => {
 /** للكتابة (Server Actions): تحقق من المستخدم مع Supabase Auth */
 export async function requireUser(allowed: Role[]) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  let userId: string | null = null;
 
-  if (!user) {
+  try {
+    const { data } = await withTimeout(supabase.auth.getUser(), 2500);
+    userId = data.user?.id ?? null;
+  } catch {
+    userId = await resolveUserId();
+  }
+
+  if (!userId) {
     throw new AppError("UNAUTHENTICATED", t("error.loginRequired"));
   }
 
   const profile = await prisma.profile.findUnique({
-    where: { id: user.id },
+    where: { id: userId },
     select: profileSelect,
   });
 
