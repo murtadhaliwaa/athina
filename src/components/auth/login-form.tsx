@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useSyncExternalStore, useTransition } from "react";
+import Image from "next/image";
 import { loginOwner, loginWithPin } from "@/actions/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -91,7 +92,14 @@ export function LoginForm() {
   return (
     <div className="relative z-10 mx-auto flex w-full max-w-sm flex-col gap-6 rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8">
       <header className="flex flex-col items-center gap-3 text-center">
-        <span aria-hidden className="h-0.5 w-10 rounded-full bg-brand-gold" />
+        <Image
+          src="/brand/athena-logo.png"
+          alt={t("app.shortName")}
+          width={160}
+          height={172}
+          priority
+          className="h-auto w-28 sm:w-32"
+        />
         <h1 className="text-balance font-heading text-2xl font-bold tracking-tight text-foreground">
           {t("app.name")}
         </h1>
