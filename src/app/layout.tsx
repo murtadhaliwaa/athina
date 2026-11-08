@@ -49,7 +49,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       >
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var d=document.documentElement,c=d.classList;c.remove('light','dark');var t=localStorage.getItem('theme');var dark=t!=='light';c.add(dark?'dark':'light');d.style.colorScheme=dark?'dark':'light';d.style.backgroundColor=dark?'#0a0a0a':'#f1ebe0';}catch(e){document.documentElement.classList.add('dark');document.documentElement.style.backgroundColor='#0a0a0a'}})();`,
+            __html: `(function(){try{var d=document.documentElement,c=d.classList;c.remove('light','dark');var t=localStorage.getItem('theme');if(t==='light')c.add('light');else c.add('dark');}catch(e){document.documentElement.classList.add('dark')}})();`,
           }}
         />
         <Providers>{children}</Providers>

@@ -62,15 +62,10 @@
   --brand-amber: #e0a84a;
   --brand-sand: #f1ebe0;
 
-  /* hex أولاً — iOS/PWA يفشل أحياناً مع oklch وحده فيظهر أسود فارغ */
-  --background: #f1ebe0;
-  --foreground: #2a2218;
-  --card: #faf7f2;
-  --card-foreground: #2a2218;
-  --background-oklch: oklch(0.945 0.012 85);
-  --foreground-oklch: oklch(0.22 0.015 55);
-  --card-oklch: oklch(0.985 0.006 85);
-  --card-foreground-oklch: oklch(0.22 0.015 55);
+  --background: oklch(0.945 0.012 85);
+  --foreground: oklch(0.22 0.015 55);
+  --card: oklch(0.985 0.006 85);
+  --card-foreground: oklch(0.22 0.015 55);
   --popover: oklch(0.99 0.004 85);
   --popover-foreground: oklch(0.22 0.015 55);
   /* أزرار رئيسية: فحم اللوغو */
@@ -104,27 +99,27 @@
 }
 
 .dark {
-  --brand-charcoal: #0a0a0a;
+  --brand-charcoal: #000000;
   --brand-gold: #d4b06a;
   --brand-amber: #e8b65a;
   --brand-sand: #0a0a0a;
 
-  /* ليلي بـ hex ثابت — أأمن للموبايل من الأسود الصريح + oklch للنص */
-  --background: #0a0a0a;
-  --foreground: #f3eee4;
-  --card: #161616;
-  --card-foreground: #f3eee4;
-  --popover: #161616;
-  --popover-foreground: #f3eee4;
+  /* خلفية النظام الليلي: أسود صريح */
+  --background: #000000;
+  --foreground: oklch(0.95 0.01 85);
+  --card: #121212;
+  --card-foreground: oklch(0.95 0.01 85);
+  --popover: #121212;
+  --popover-foreground: oklch(0.95 0.01 85);
   /* في الليلي: الذهب يبرز مثل إضاءة اللوغو */
-  --primary: #d4b06a;
-  --primary-foreground: #0a0a0a;
+  --primary: oklch(0.78 0.11 85);
+  --primary-foreground: #000000;
   --secondary: #1a1a1a;
-  --secondary-foreground: #eee6d8;
+  --secondary-foreground: oklch(0.92 0.02 85);
   --muted: #1a1a1a;
-  --muted-foreground: #b8ae9c;
+  --muted-foreground: oklch(0.72 0.02 80);
   --accent: #1f1a14;
-  --accent-foreground: #eee6d8;
+  --accent-foreground: oklch(0.92 0.04 85);
   --destructive: oklch(0.65 0.18 25);
   --border: oklch(1 0 0 / 14%);
   --input: oklch(1 0 0 / 16%);
@@ -144,15 +139,6 @@
   --sidebar-ring: oklch(0.78 0.11 85);
 }
 
-@supports (color: oklch(0 0 0)) {
-  :root {
-    --background: var(--background-oklch);
-    --foreground: var(--foreground-oklch);
-    --card: var(--card-oklch);
-    --card-foreground: var(--card-foreground-oklch);
-  }
-}
-
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -160,17 +146,13 @@
   html {
     @apply font-sans;
     color-scheme: light;
-    background-color: #f1ebe0;
   }
   html.dark {
     color-scheme: dark;
-    background-color: #0a0a0a;
   }
   body {
     @apply bg-background text-foreground;
-    min-height: 100dvh;
     overscroll-behavior: contain;
-    -webkit-text-size-adjust: 100%;
   }
   button,
   a,
