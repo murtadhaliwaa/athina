@@ -1,0 +1,11 @@
+import { Skeleton } from "@/components/ui/skeleton";
+
+export default function OwnerAuditLoading() {
+  return (
+    <div className="mx-auto w-full max-w-5xl space-y-4 px-4 pt-3">
+      <Skeleton className="h-8 w-28" />
+      <Skeleton className="h-28 w-full rounded-2xl" />
+      <Skeleton className="h-64 w-full rounded-2xl" />
+    </div>
+  );
+}

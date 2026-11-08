@@ -1,0 +1,298 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  OWNER
+  CASHIER
+  WAITER
+}
+
+enum OrderType {
+  DINE_IN
+  TAKEAWAY // قديم — لا يُنشأ بعد الآن؛ الإبقاء لتوافق البيانات
+}
+
+enum OrderStatus {
+  NEW
+  PREPARING
+  READY
+  SERVED
+  CANCELLED
+}
+
+enum ItemStatus {
+  ACTIVE
+  CANCELLED
+}
+
+enum BillStatus {
+  OPEN
+  PAID
+  VOID
+}
+
+enum DiscountType {
+  AMOUNT
+  PERCENT
+}
+
+enum PaymentMethod {
+  CASH
+}
+
+model Profile {
+  id        String   @id @db.Uuid
+  username  String   @unique
+  fullName  String
+  role      Role
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ordersCreated Order[]     @relation("OrderCreatedBy")
+  itemsAdded    OrderItem[] @relation("ItemAddedBy")
+  shiftsOpened  Shift[]     @relation("ShiftOpenedBy")
+  paymentsTaken Payment[]
+  auditLogs     AuditLog[]
+
+  @@map("profiles")
+}
+
+model Category {
+  id        String     @id @default(uuid()) @db.Uuid
+  name      String
+  sortOrder Int        @default(0)
+  isActive  Boolean    @default(true)
+  items     MenuItem[]
+
+  // قائمة التصنيفات النشطة مرتبة
+  @@index([isActive, sortOrder])
+  @@map("categories")
+}
+
+model MenuItem {
+  id          String   @id @default(uuid()) @db.Uuid
+  categoryId  String   @db.Uuid
+  category    Category @relation(fields: [categoryId], references: [id])
+  name        String
+  description String?
+  price       Int
+  imagePath   String?
+  isAvailable Boolean  @default(true)
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  orderItems  OrderItem[]
+
+  @@index([categoryId, sortOrder])
+  // منيو الطلب: أصناف نشطة/متاحة حسب التصنيف
+  @@index([isActive, isAvailable, categoryId])
+  @@map("menu_items")
+}
+
+model CafeTable {
+  id        String  @id @default(uuid()) @db.Uuid
+  label     String  @unique
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+  bills     Bill[]
+  orders    Order[]
+
+  // شبكة طاولات الويتر
+  @@index([isActive, sortOrder])
+  @@map("tables")
+}
+
+model Shift {
+  id           String    @id @default(uuid()) @db.Uuid
+  openedById   String    @db.Uuid
+  openedBy     Profile   @relation("ShiftOpenedBy", fields: [openedById], references: [id])
+  openedAt     DateTime  @default(now())
+  openingCash  Int
+  closedAt     DateTime?
+  closedById   String?   @db.Uuid
+  countedCash  Int?
+  expectedCash Int?
+  difference   Int?
+  note         String?
+
+  bills    Bill[]
+  orders   Order[]
+  payments Payment[]
+
+  // findOpenShift: closedAt IS NULL
+  @@index([closedAt])
+  @@map("shifts")
+}
+
+model Bill {
+  id             String        @id @default(uuid()) @db.Uuid
+  type           OrderType
+  tableId        String?       @db.Uuid
+  table          CafeTable?    @relation(fields: [tableId], references: [id])
+  status         BillStatus    @default(OPEN)
+  businessDate   DateTime      @db.Date
+  shiftId        String?       @db.Uuid
+  shift          Shift?        @relation(fields: [shiftId], references: [id])
+  subtotal       Int           @default(0)
+  discountType   DiscountType?
+  discountValue  Int           @default(0)
+  discountAmount Int           @default(0)
+  discountReason String?
+  discountById   String?       @db.Uuid
+  total          Int           @default(0)
+  openedAt       DateTime      @default(now())
+  paidAt         DateTime?
+  paidById       String?       @db.Uuid
+  voidedAt       DateTime?
+  voidedById     String?       @db.Uuid
+  voidReason     String?
+
+  orders   Order[]
+  payments Payment[]
+
+  @@index([status, tableId])
+  @@index([businessDate, status])
+  // قائمة الفواتير المفتوحة مرتبة بوقت الفتح
+  @@index([status, openedAt])
+  @@map("bills")
+}
+
+model Order {
+  id                  String      @id @default(uuid()) @db.Uuid
+  businessDate        DateTime    @db.Date
+  dailyNumber         Int
+  billId              String      @db.Uuid
+  bill                Bill        @relation(fields: [billId], references: [id])
+  tableId             String?     @db.Uuid
+  table               CafeTable?  @relation(fields: [tableId], references: [id])
+  type                OrderType
+  status              OrderStatus @default(NEW)
+  note                String?
+  isFollowUp          Boolean     @default(false)
+  shiftId             String?     @db.Uuid
+  shift               Shift?      @relation(fields: [shiftId], references: [id])
+  createdById         String      @db.Uuid
+  createdBy           Profile     @relation("OrderCreatedBy", fields: [createdById], references: [id])
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+  preparingAt         DateTime?
+  readyAt             DateTime?
+  servedAt            DateTime?
+  cancelRequestedAt   DateTime?
+  cancelRequestedById String?     @db.Uuid
+  cancelledAt         DateTime?
+  cancelledById       String?     @db.Uuid
+  cancelReason        String?
+  items               OrderItem[]
+
+  @@unique([businessDate, dailyNumber])
+  @@index([status, createdAt])
+  @@index([billId])
+  // لوحة الكاشير: SERVED بـ servedAt
+  @@index([status, servedAt])
+  // طلبات يوم العمل حسب الحالة
+  @@index([businessDate, status])
+  // recalc / أصناف فاتورة حسب حالة الطلب
+  @@index([billId, status])
+  // طلباتي / جاهز للويتر
+  @@index([createdById, status])
+  @@index([tableId, status])
+  @@map("orders")
+}
+
+model OrderItem {
+  id            String     @id @default(uuid()) @db.Uuid
+  orderId       String     @db.Uuid
+  order         Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItemId        String     @db.Uuid
+  menuItem          MenuItem   @relation(fields: [menuItemId], references: [id])
+  nameSnapshot      String
+  categorySnapshot  String
+  priceSnapshot     Int
+  quantity          Int
+  note          String?
+  status        ItemStatus @default(ACTIVE)
+  addedById     String     @db.Uuid
+  addedBy       Profile    @relation("ItemAddedBy", fields: [addedById], references: [id])
+  createdAt     DateTime   @default(now())
+  cancelledAt   DateTime?
+  cancelledById String?    @db.Uuid
+  cancelReason  String?
+
+  // ACTIVE ضمن الطلب (recalc واللوحات)
+  @@index([orderId, status])
+  @@map("order_items")
+}
+
+model Payment {
+  id             String        @id @default(uuid()) @db.Uuid
+  billId         String        @db.Uuid
+  bill           Bill          @relation(fields: [billId], references: [id])
+  shiftId        String        @db.Uuid
+  shift          Shift         @relation(fields: [shiftId], references: [id])
+  method         PaymentMethod @default(CASH)
+  amount         Int
+  receivedAmount Int?
+  createdById    String        @db.Uuid
+  createdBy      Profile       @relation(fields: [createdById], references: [id])
+  createdAt      DateTime      @default(now())
+
+  @@index([billId])
+  @@index([shiftId])
+  @@map("payments")
+}
+
+model DailyCounter {
+  businessDate DateTime @id @db.Date
+  lastNumber   Int      @default(0)
+
+  @@map("daily_counters")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String   @db.Uuid
+  actor      Profile  @relation(fields: [actorId], references: [id])
+  action     String
+  entityType String
+  entityId   String
+  reason     String?
+  before     Json?
+  after      Json?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model LoginAttempt {
+  id        String   @id @default(uuid()) @db.Uuid
+  username  String
+  ip        String?
+  success   Boolean
+  createdAt DateTime @default(now())
+
+  @@index([username, createdAt])
+  @@map("login_attempts")
+}
+
+model CafeSettings {
+  id                   Int     @id @default(1)
+  cafeName             String  @default("الكوفي")
+  phone                String?
+  address              String?
+  receiptFooter        String? @default("شكراً لزيارتكم")
+  businessDayStartHour Int     @default(5)
+
+  @@map("cafe_settings")
+}
