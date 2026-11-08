@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { Loader2 } from "lucide-react";
 import {
   fetchWaiterReadyOrders,
   type ReadyOrderBrief,
@@ -28,13 +27,8 @@ export function WaiterLiveShell({
 }) {
   const [mine, setMine] = useState(initialMine);
   const [readyCount, setReadyCount] = useState(initialReadyCount);
-  const [navPending, setNavPending] = useState(false);
   const [, startTransition] = useTransition();
   const inflight = useRef(false);
-
-  const onNavigating = useCallback((pending: boolean) => {
-    setNavPending(pending);
-  }, []);
 
   const syncReady = useCallback(() => {
     if (inflight.current) return;
@@ -70,24 +64,8 @@ export function WaiterLiveShell({
         </p>
       )}
       <ReadyNotifier readyOrders={mine} />
-      <div className="relative flex min-h-0 flex-1 flex-col">
-        {children}
-        {navPending ? (
-          <div
-            className="bg-background/75 absolute inset-0 z-30 flex flex-col items-center justify-center gap-2 backdrop-blur-[1px]"
-            role="status"
-            aria-live="polite"
-            aria-label={t("app.loading")}
-          >
-            <Loader2
-              className="text-brand-amber size-8 animate-spin"
-              aria-hidden
-            />
-            <p className="text-muted-foreground text-sm">{t("app.loading")}</p>
-          </div>
-        ) : null}
-      </div>
-      <WaiterBottomNav readyCount={readyCount} onNavigating={onNavigating} />
+      <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+      <WaiterBottomNav readyCount={readyCount} />
     </div>
   );
 }
