@@ -1,5 +1,6 @@
 import { BillsList, type OpenBillCard } from "@/components/cashier/bills-list";
 import { getCurrentProfile } from "@/lib/auth/guard";
+import { areBillOrdersReady } from "@/lib/orders/bill-ready";
 import { getOpenShiftCached } from "@/lib/shifts/helpers";
 import { prisma } from "@/lib/prisma";
 
@@ -26,15 +27,13 @@ export default async function CashierBillsPage() {
 
   const cards: OpenBillCard[] = bills.map((b) => {
     const active = b.orders;
-    const allReady =
-      active.length > 0 && active.every((o) => o.status === "READY");
     return {
       id: b.id,
       total: b.total,
       openedAt: b.openedAt.toISOString(),
       tableLabel: b.table?.label ?? null,
       ordersCount: active.length,
-      allReady,
+      allReady: areBillOrdersReady(active.map((o) => o.status)),
     };
   });
 

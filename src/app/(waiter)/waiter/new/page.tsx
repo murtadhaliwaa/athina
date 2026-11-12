@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { OrderBuilder } from "@/components/shared/order-builder";
+import { isWaterItemName } from "@/lib/billing/water-constants";
 import { getMenuCatalog } from "@/lib/queries/menu";
 import { getOpenShiftCached } from "@/lib/shifts/helpers";
 import { prisma } from "@/lib/prisma";
@@ -14,7 +15,7 @@ export default async function WaiterNewOrderPage({
   const { table: tableId } = await searchParams;
   if (!tableId) redirect("/waiter");
 
-  const [categories, table, shift] = await Promise.all([
+  const [rawCategories, table, shift] = await Promise.all([
     getMenuCatalog(),
     prisma.cafeTable.findUnique({
       where: { id: tableId },
@@ -24,6 +25,14 @@ export default async function WaiterNewOrderPage({
   ]);
 
   if (!table?.isActive) redirect("/waiter");
+
+  // الماء يُضاف تلقائياً على الفاتورة — نخفيه من طلب الكابتن لتفادي التكرار
+  const categories = rawCategories
+    .map((c) => ({
+      ...c,
+      items: c.items.filter((it) => !isWaterItemName(it.name)),
+    }))
+    .filter((c) => c.items.length > 0);
 
   return (
     <OrderBuilder

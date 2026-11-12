@@ -183,7 +183,7 @@ export async function removeDiscount(input: {
   });
 }
 
-/** تأكيد كمية الماء قبل شاشة الدفع — يحدّث الفاتورة ويعيد الإجمالي */
+/** تعديل كمية الماء على فاتورة مفتوحة — من صفحة التفاصيل */
 export async function setBillWater(input: {
   billId: string;
   waterQty: number;

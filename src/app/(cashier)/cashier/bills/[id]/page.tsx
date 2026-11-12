@@ -7,6 +7,7 @@ import {
   countActiveWaterOnBill,
   findWaterMenuItem,
 } from "@/lib/billing/water";
+import { isOrderStillPreparing } from "@/lib/orders/bill-ready";
 import { prisma } from "@/lib/prisma";
 import { t } from "@/lib/i18n/ar-iq";
 
@@ -69,9 +70,9 @@ export default async function CashierBillDetailPage({
 
   if (!bill) notFound();
 
-  // تنبيه إن ما زالت طلبات قبل «جاهز» — انقدّم يصير تلقائياً عند الدفع
-  const hasUnserved = bill.orders.some(
-    (o) => o.status === "NEW" || o.status === "PREPARING",
+  // تنبيه إن بقي تحضير — READY/SERVED ما يمنعون الدفع
+  const hasUnserved = bill.orders.some((o) =>
+    isOrderStillPreparing(o.status),
   );
 
   const currentWaterQty = waterItem
@@ -97,6 +98,7 @@ export default async function CashierBillDetailPage({
           guestCount: bill.guestCount,
           waterAvailable: Boolean(waterItem),
           waterPrice: waterItem?.price ?? 0,
+          waterCategory: waterItem?.category.name ?? null,
           currentWaterQty,
           hasUnserved,
           orders: bill.orders.map((o) => ({

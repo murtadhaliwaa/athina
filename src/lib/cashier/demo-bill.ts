@@ -15,9 +15,10 @@ export const demoBill = {
   total: 46_800,
   tableLabel: "5",
   guestCount: 5,
-  /** معاينة فقط — لا نستدعي setBillWater على فاتورة وهمية */
-  waterAvailable: false,
+  /** معاينة واجهة قسم الماء — بدون استدعاء الشبكة */
+  waterAvailable: true,
   waterPrice: 500,
+  waterCategory: "المياه",
   currentWaterQty: 2,
   hasUnserved: true,
   orders: [

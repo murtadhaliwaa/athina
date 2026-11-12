@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { clampWaterQty } from "@/lib/billing/water";
+import {
+  clampWaterQty,
+  DEFAULT_WATER_QTY,
+  isWaterItemName,
+} from "@/lib/billing/water-constants";
 
 describe("clampWaterQty", () => {
   it("يقيد الكمية بعدد الجالسين", () => {
@@ -16,5 +20,16 @@ describe("clampWaterQty", () => {
 
   it("يقرّب للأسفل", () => {
     expect(clampWaterQty(3.9, 10)).toBe(3);
+  });
+});
+
+describe("water defaults", () => {
+  it("الكمية الافتراضية واحد", () => {
+    expect(DEFAULT_WATER_QTY).toBe(1);
+  });
+
+  it("يتعرّف على اسم الماء", () => {
+    expect(isWaterItemName("ماء")).toBe(true);
+    expect(isWaterItemName(" قهوة ")).toBe(false);
   });
 });

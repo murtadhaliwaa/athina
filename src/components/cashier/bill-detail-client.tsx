@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, Minus, Plus } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import {
   applyDiscount,
   payBill,
@@ -39,6 +39,8 @@ import { formatIQD } from "@/lib/money";
 import { writeReceiptSnapshot } from "@/lib/cashier/receipt-snapshot";
 import { MoneyBdi } from "@/components/shared/money-bdi";
 import { OrderItemLabel, QtyChip } from "@/components/shared/order-item-label";
+import { QtyStepper } from "@/components/shared/qty-stepper";
+import { isWaterItemName } from "@/lib/billing/water-constants";
 import { t } from "@/lib/i18n/ar-iq";
 import type { OrderStatus } from "@prisma/client";
 
@@ -56,6 +58,7 @@ type BillView = {
   guestCount?: number | null;
   waterAvailable?: boolean;
   waterPrice?: number;
+  waterCategory?: string | null;
   currentWaterQty?: number;
   orders: {
     id: string;
@@ -83,17 +86,11 @@ export function BillDetailClient({
   const [pending, startTransition] = useTransition();
   const [paying, setPaying] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
-  const [payStep, setPayStep] = useState<"water" | "cash">("cash");
   const [discOpen, setDiscOpen] = useState(false);
   const [discType, setDiscType] = useState<"AMOUNT" | "PERCENT">("PERCENT");
   const [discValue, setDiscValue] = useState(0);
   const [discReason, setDiscReason] = useState("");
-  const suggestedWater =
-    bill.guestCount && bill.guestCount > 0
-      ? bill.guestCount
-      : (bill.currentWaterQty ?? 0);
-  const [waterQty, setWaterQty] = useState(suggestedWater);
-  const [waterApplied, setWaterApplied] = useState(false);
+  const [removeWaterOpen, setRemoveWaterOpen] = useState(false);
   const [payTotal, setPayTotal] = useState(bill.total);
   const [paySubtotal, setPaySubtotal] = useState(bill.subtotal);
   const [payDiscount, setPayDiscount] = useState(bill.discountAmount);
@@ -102,17 +99,28 @@ export function BillDetailClient({
   const busy = pending || paying;
   const waterMax =
     bill.guestCount && bill.guestCount > 0 ? bill.guestCount : 50;
+  const waterQty = bill.currentWaterQty ?? 0;
+  const showWaterControls = Boolean(bill.waterAvailable);
 
   function openPayFlow() {
-    const startWater = Boolean(bill.waterAvailable);
-    setWaterQty(suggestedWater);
-    setWaterApplied(false);
     setPayTotal(bill.total);
     setPaySubtotal(bill.subtotal);
     setPayDiscount(bill.discountAmount);
     setReceived(bill.total);
-    setPayStep(startWater ? "water" : "cash");
     setPayOpen(true);
+  }
+
+  function applyWaterQty(next: number) {
+    const qty = Math.max(0, Math.min(waterMax, Math.floor(next)));
+    startTransition(async () => {
+      const res = await setBillWater({ billId: bill.id, waterQty: qty });
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      setRemoveWaterOpen(false);
+      router.refresh();
+    });
   }
 
   const run = (fn: () => Promise<{ ok: boolean; error?: string; data?: unknown }>) => {
@@ -250,36 +258,111 @@ export function BillDetailClient({
         </div>
       </header>
 
-      {bill.orders.map((o) => (
-        <section
-          key={o.id}
-          className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3.5 py-2.5">
-            <div className="flex flex-wrap items-center gap-2">
-              <bdi dir="ltr" className="text-base font-semibold">
-                {formatOrderNumber(o.dailyNumber)}
-              </bdi>
-              <OrderStatusBadge status={o.status} />
-            </div>
-          </div>
-          <ul className="divide-y divide-border">
-            {o.items.map((it, i) => (
-              <li
-                key={i}
-                className="flex items-start gap-2 px-3.5 py-2.5 text-sm"
-              >
-                <QtyChip quantity={it.quantity} />
+      <AlertDialog open={removeWaterOpen} onOpenChange={setRemoveWaterOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("bill.waterRemoveConfirm")}</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="grid grid-cols-2">
+            <AlertDialogCancel disabled={busy}>
+              {t("confirm.no")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={busy}
+              onClick={() => applyWaterQty(0)}
+            >
+              {busy ? t("app.loading") : t("confirm.yes")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {(() => {
+        const waterHostOrderId =
+          bill.orders.find((o) =>
+            o.items.some((it) => isWaterItemName(it.nameSnapshot)),
+          )?.id ?? bill.orders[0]?.id;
+
+        const waterMeta =
+          bill.orders
+            .flatMap((o) => o.items)
+            .find((it) => isWaterItemName(it.nameSnapshot)) ?? null;
+
+        const waterName = waterMeta?.nameSnapshot ?? t("bill.waterSection");
+        const waterCategory =
+          waterMeta?.categorySnapshot ?? bill.waterCategory ?? null;
+
+        const waterRow =
+          showWaterControls ? (
+            <li className="flex items-center gap-2 px-3.5 py-2.5 text-sm">
+              <div className="flex min-w-0 flex-1 items-start gap-2">
+                <QtyChip quantity={waterQty} />
                 <OrderItemLabel
-                  name={it.nameSnapshot}
-                  category={it.categorySnapshot}
-                  note={it.note}
+                  name={waterName}
+                  category={waterCategory}
                 />
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
+              </div>
+              <QtyStepper
+                quantity={waterQty}
+                disabled={busy}
+                size="sm"
+                decreaseLabel={
+                  waterQty <= 1
+                    ? t("action.removeItem")
+                    : t("action.decreaseQty")
+                }
+                onDecrease={() => {
+                  if (waterQty <= 0) return;
+                  if (waterQty === 1) {
+                    setRemoveWaterOpen(true);
+                    return;
+                  }
+                  applyWaterQty(waterQty - 1);
+                }}
+                onIncrease={() => applyWaterQty(waterQty + 1)}
+              />
+            </li>
+          ) : null;
+
+        return bill.orders.map((o) => {
+          const items = o.items.filter(
+            (it) => !isWaterItemName(it.nameSnapshot),
+          );
+          const hostWater = o.id === waterHostOrderId && Boolean(waterRow);
+          if (items.length === 0 && !hostWater) return null;
+          return (
+            <section
+              key={o.id}
+              className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3.5 py-2.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <bdi dir="ltr" className="text-base font-semibold">
+                    {formatOrderNumber(o.dailyNumber)}
+                  </bdi>
+                  <OrderStatusBadge status={o.status} />
+                </div>
+              </div>
+              <ul className="divide-y divide-border">
+                {items.map((it, i) => (
+                  <li
+                    key={i}
+                    className="flex items-start gap-2 px-3.5 py-2.5 text-sm"
+                  >
+                    <QtyChip quantity={it.quantity} />
+                    <OrderItemLabel
+                      name={it.nameSnapshot}
+                      category={it.categorySnapshot}
+                      note={it.note}
+                    />
+                  </li>
+                ))}
+                {hostWater ? waterRow : null}
+              </ul>
+            </section>
+          );
+        });
+      })()}
 
       <section className="space-y-2 rounded-2xl border border-border bg-card p-4 text-sm shadow-sm">
         <p className="flex justify-between gap-2">
@@ -449,248 +532,146 @@ export function BillDetailClient({
           {busy ? t("app.loading") : t("bill.pay")}
         </Button>
         <AlertDialogContent>
-          {payStep === "water" ? (
-            <>
-              <AlertDialogHeader className="place-items-center text-center">
-                <AlertDialogTitle className="text-lg font-semibold">
-                  {t("bill.waterConfirm")}
-                </AlertDialogTitle>
-              </AlertDialogHeader>
-              <p className="text-muted-foreground text-center text-sm">
-                {t("bill.waterConfirmHint")}
-              </p>
-              {bill.guestCount && bill.guestCount > 0 ? (
-                <p className="text-center text-xs text-brand-amber">
-                  {t("bill.waterSuggested", { n: String(bill.guestCount) })}
-                </p>
-              ) : null}
-              <div className="flex items-center justify-center gap-3 py-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="size-12 rounded-xl"
-                  disabled={busy || waterQty <= 0}
-                  onClick={() => setWaterQty((n) => Math.max(0, n - 1))}
-                >
-                  <Minus className="size-4" />
-                </Button>
-                <div className="min-w-16 text-center">
-                  <bdi dir="ltr" className="text-3xl font-bold">
-                    {waterQty}
-                  </bdi>
-                  <p className="text-muted-foreground mt-1 text-xs">
-                    {t("bill.waterQty")}
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="size-12 rounded-xl"
-                  disabled={busy || waterQty >= waterMax}
-                  onClick={() =>
-                    setWaterQty((n) => Math.min(waterMax, n + 1))
-                  }
-                >
-                  <Plus className="size-4" />
-                </Button>
-              </div>
-              <AlertDialogFooter>
-                <AlertDialogCancel className="w-full" disabled={busy}>
-                  {t("confirm.no")}
-                </AlertDialogCancel>
-                <Button
-                  type="button"
-                  className="h-11 w-full rounded-xl bg-brand-amber font-semibold text-black hover:bg-brand-amber/90"
-                  disabled={busy}
-                  onClick={() => {
-                    startTransition(async () => {
-                      const res = await setBillWater({
-                        billId: bill.id,
-                        waterQty,
-                      });
-                      if (!res.ok) {
-                        toast.error(res.error);
-                        return;
-                      }
-                      setPayTotal(res.data.total);
-                      setPaySubtotal(res.data.subtotal);
-                      setPayDiscount(res.data.discountAmount);
-                      setWaterQty(res.data.waterQty);
-                      setWaterApplied(true);
-                      setReceived(res.data.total);
-                      setPayStep("cash");
-                      router.refresh();
-                    });
-                  }}
-                >
-                  {pending ? t("app.loading") : t("bill.waterNext")}
-                </Button>
-              </AlertDialogFooter>
-            </>
-          ) : (
-            <>
-              <AlertDialogHeader className="place-items-center text-center">
-                <AlertDialogTitle className="text-lg font-semibold">
-                  {t("bill.pay")}
-                </AlertDialogTitle>
-              </AlertDialogHeader>
-              {bill.hasUnserved && (
-                <p className="text-destructive text-center text-sm">
-                  {t("warn.unserved")}
-                </p>
-              )}
-              <div className="rounded-2xl bg-foreground/[0.06] px-4 py-3 text-center dark:bg-white/[0.07]">
-                <p className="text-muted-foreground text-xs">
-                  {t("bill.total")}
-                </p>
-                <p className="mt-1 text-2xl font-bold leading-none">
-                  <MoneyBdi amount={payTotal} />
-                </p>
-              </div>
-              <div className="space-y-2">
-                <p className="text-muted-foreground text-center text-xs">
-                  {t("bill.received")}
-                </p>
-                <Input
-                  type="number"
-                  dir="ltr"
-                  inputMode="numeric"
-                  className="h-12 rounded-xl text-center text-xl font-semibold tabular-nums"
-                  value={received || ""}
-                  placeholder={t("bill.receivedPlaceholder")}
-                  disabled={busy}
-                  onChange={(e) =>
-                    setReceived(parseInt(e.target.value, 10) || 0)
-                  }
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                {[5000, 10000, 25000, 50000].map((n) => {
-                  const active = received === n;
-                  return (
-                    <Button
-                      key={n}
-                      type="button"
-                      variant="secondary"
-                      disabled={busy}
-                      className={cn(
-                        "h-11 rounded-xl ring-1 ring-foreground/10 dark:bg-white/[0.06] dark:ring-white/15",
-                        active &&
-                          "bg-brand-amber text-black ring-brand-amber hover:bg-brand-amber/90",
-                      )}
-                      onClick={() => setReceived(n)}
-                    >
-                      <MoneyBdi amount={n} />
-                    </Button>
-                  );
-                })}
-              </div>
-              <div
-                className={cn(
-                  "flex items-center justify-between gap-3 rounded-xl px-4 py-3",
-                  received > 0 && received < payTotal
-                    ? "bg-destructive/10 text-destructive"
-                    : received > payTotal
-                      ? "bg-brand-amber/15"
-                      : "bg-foreground/[0.06] dark:bg-white/[0.07]",
-                )}
-              >
-                <span className="min-w-0 text-sm font-medium">
-                  {received > 0 && received < payTotal
-                    ? t("bill.insufficientCash")
-                    : t("bill.change")}
-                </span>
-                <MoneyBdi
-                  amount={
-                    received > 0 && received < payTotal
-                      ? payTotal - received
-                      : Math.max(0, received - payTotal)
-                  }
-                  className="shrink-0 text-lg font-bold"
-                />
-              </div>
-              <AlertDialogFooter>
-                <AlertDialogCancel className="w-full" disabled={busy}>
-                  {t("confirm.no")}
-                </AlertDialogCancel>
-                <AlertDialogAction
-                  className="h-11 w-full rounded-xl bg-brand-amber font-semibold text-black hover:bg-brand-amber/90"
-                  disabled={busy}
-                  onClick={() => {
-                    if (received < payTotal) {
-                      toast.error(t("bill.insufficientCash"));
-                      return;
-                    }
-
-                    setPaying(true);
-                    startTransition(async () => {
-                      const res = await payBill({
-                        billId: bill.id,
-                        receivedAmount: received,
-                      });
-                      if (!res.ok) {
-                        setPaying(false);
-                        toast.error(res.error);
-                        return;
-                      }
-                      if (res.data.voided) {
-                        toast.message(t("bill.autoVoidEmpty"));
-                        router.replace("/cashier/bills");
-                        return;
-                      }
-
-                      const baseItems = bill.orders.flatMap((o) =>
-                        o.items.map((it) => ({
-                          name: it.nameSnapshot,
-                          category: it.categorySnapshot,
-                          quantity: it.quantity,
-                          lineTotal: it.priceSnapshot * it.quantity,
-                        })),
-                      );
-                      const receiptItems = waterApplied
-                        ? [
-                            ...baseItems.filter((it) => it.name !== "ماء"),
-                            ...(waterQty > 0
-                              ? [
-                                  {
-                                    name: "ماء",
-                                    category: "",
-                                    quantity: waterQty,
-                                    lineTotal:
-                                      (bill.waterPrice ?? 0) * waterQty,
-                                  },
-                                ]
-                              : []),
-                          ]
-                        : baseItems;
-
-                      writeReceiptSnapshot({
-                        id: bill.id,
-                        tableLabel: bill.tableLabel,
-                        subtotal: paySubtotal,
-                        discountAmount: payDiscount,
-                        discountType: bill.discountType,
-                        discountValue: bill.discountValue,
-                        total: payTotal,
-                        paidAt: new Date().toISOString(),
-                        received,
-                        items: receiptItems,
-                      });
-
-                      router.replace(`/cashier/bills/${bill.id}/receipt`);
-                      toast.success(
-                        `${t("bill.change")}: ${formatIQD(res.data.change)}`,
-                      );
-                    });
-                  }}
-                >
-                  {busy ? t("app.loading") : t("confirm.yes")}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </>
+          <AlertDialogHeader className="place-items-center text-center">
+            <AlertDialogTitle className="text-lg font-semibold">
+              {t("bill.pay")}
+            </AlertDialogTitle>
+          </AlertDialogHeader>
+          {bill.hasUnserved && (
+            <p className="text-destructive text-center text-sm">
+              {t("warn.unserved")}
+            </p>
           )}
+          <div className="rounded-2xl bg-foreground/[0.06] px-4 py-3 text-center dark:bg-white/[0.07]">
+            <p className="text-muted-foreground text-xs">{t("bill.total")}</p>
+            <p className="mt-1 text-2xl font-bold leading-none">
+              <MoneyBdi amount={payTotal} />
+            </p>
+          </div>
+          <div className="space-y-2">
+            <p className="text-muted-foreground text-center text-xs">
+              {t("bill.received")}
+            </p>
+            <Input
+              type="number"
+              dir="ltr"
+              inputMode="numeric"
+              className="h-12 rounded-xl text-center text-xl font-semibold tabular-nums"
+              value={received || ""}
+              placeholder={t("bill.receivedPlaceholder")}
+              disabled={busy}
+              onChange={(e) =>
+                setReceived(parseInt(e.target.value, 10) || 0)
+              }
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {[5000, 10000, 25000, 50000].map((n) => {
+              const active = received === n;
+              return (
+                <Button
+                  key={n}
+                  type="button"
+                  variant="secondary"
+                  disabled={busy}
+                  className={cn(
+                    "h-11 rounded-xl ring-1 ring-foreground/10 dark:bg-white/[0.06] dark:ring-white/15",
+                    active &&
+                      "bg-brand-amber text-black ring-brand-amber hover:bg-brand-amber/90",
+                  )}
+                  onClick={() => setReceived(n)}
+                >
+                  <MoneyBdi amount={n} />
+                </Button>
+              );
+            })}
+          </div>
+          <div
+            className={cn(
+              "flex items-center justify-between gap-3 rounded-xl px-4 py-3",
+              received > 0 && received < payTotal
+                ? "bg-destructive/10 text-destructive"
+                : received > payTotal
+                  ? "bg-brand-amber/15"
+                  : "bg-foreground/[0.06] dark:bg-white/[0.07]",
+            )}
+          >
+            <span className="min-w-0 text-sm font-medium">
+              {received > 0 && received < payTotal
+                ? t("bill.insufficientCash")
+                : t("bill.change")}
+            </span>
+            <MoneyBdi
+              amount={
+                received > 0 && received < payTotal
+                  ? payTotal - received
+                  : Math.max(0, received - payTotal)
+              }
+              className="shrink-0 text-lg font-bold"
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="w-full" disabled={busy}>
+              {t("confirm.no")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="h-11 w-full rounded-xl bg-brand-amber font-semibold text-black hover:bg-brand-amber/90"
+              disabled={busy}
+              onClick={() => {
+                if (received < payTotal) {
+                  toast.error(t("bill.insufficientCash"));
+                  return;
+                }
+
+                setPaying(true);
+                startTransition(async () => {
+                  const res = await payBill({
+                    billId: bill.id,
+                    receivedAmount: received,
+                  });
+                  if (!res.ok) {
+                    setPaying(false);
+                    toast.error(res.error);
+                    return;
+                  }
+                  if (res.data.voided) {
+                    toast.message(t("bill.autoVoidEmpty"));
+                    router.replace("/cashier/bills");
+                    return;
+                  }
+
+                  const receiptItems = bill.orders.flatMap((o) =>
+                    o.items.map((it) => ({
+                      name: it.nameSnapshot,
+                      category: it.categorySnapshot,
+                      quantity: it.quantity,
+                      lineTotal: it.priceSnapshot * it.quantity,
+                    })),
+                  );
+
+                  writeReceiptSnapshot({
+                    id: bill.id,
+                    tableLabel: bill.tableLabel,
+                    subtotal: paySubtotal,
+                    discountAmount: payDiscount,
+                    discountType: bill.discountType,
+                    discountValue: bill.discountValue,
+                    total: payTotal,
+                    paidAt: new Date().toISOString(),
+                    received,
+                    items: receiptItems,
+                  });
+
+                  router.replace(`/cashier/bills/${bill.id}/receipt`);
+                  toast.success(
+                    `${t("bill.change")}: ${formatIQD(res.data.change)}`,
+                  );
+                });
+              }}
+            >
+              {busy ? t("app.loading") : t("confirm.yes")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 

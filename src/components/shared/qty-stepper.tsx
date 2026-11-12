@@ -13,6 +13,7 @@ export function QtyStepper({
   onDecrease,
   onIncrease,
   decreaseLabel,
+  size = "md",
   className,
 }: {
   quantity: number;
@@ -20,12 +21,15 @@ export function QtyStepper({
   onDecrease: () => void;
   onIncrease: () => void;
   decreaseLabel?: string;
+  size?: "sm" | "md";
   className?: string;
 }) {
+  const compact = size === "sm";
   return (
     <div
       className={cn(
-        "bg-secondary inline-flex h-10 shrink-0 items-stretch overflow-hidden rounded-xl",
+        "bg-secondary inline-flex shrink-0 items-stretch overflow-hidden rounded-lg",
+        compact ? "h-7" : "h-10 rounded-xl",
         className,
       )}
       role="group"
@@ -35,13 +39,23 @@ export function QtyStepper({
         disabled={disabled}
         aria-label={decreaseLabel ?? t("action.decreaseQty")}
         onClick={onDecrease}
-        className="text-foreground inline-flex w-10 items-center justify-center transition-colors hover:bg-black/10 disabled:opacity-40 dark:hover:bg-white/10"
+        className={cn(
+          "text-foreground inline-flex items-center justify-center transition-colors hover:bg-black/10 disabled:opacity-40 dark:hover:bg-white/10",
+          compact ? "w-7" : "w-10",
+        )}
       >
-        <Minus className="size-4" strokeWidth={2.25} aria-hidden />
+        <Minus
+          className={compact ? "size-3" : "size-4"}
+          strokeWidth={2.25}
+          aria-hidden
+        />
       </button>
       <bdi
         dir="ltr"
-        className="text-brand-amber inline-flex min-w-9 items-center justify-center px-1 text-sm font-bold tabular-nums"
+        className={cn(
+          "text-brand-amber inline-flex items-center justify-center px-1 font-bold tabular-nums",
+          compact ? "min-w-6 text-xs" : "min-w-9 text-sm",
+        )}
       >
         {quantity}
       </bdi>
@@ -50,9 +64,16 @@ export function QtyStepper({
         disabled={disabled || quantity >= 99}
         aria-label={t("action.increaseQty")}
         onClick={onIncrease}
-        className="text-foreground inline-flex w-10 items-center justify-center transition-colors hover:bg-black/10 disabled:opacity-40 dark:hover:bg-white/10"
+        className={cn(
+          "text-foreground inline-flex items-center justify-center transition-colors hover:bg-black/10 disabled:opacity-40 dark:hover:bg-white/10",
+          compact ? "w-7" : "w-10",
+        )}
       >
-        <Plus className="size-4" strokeWidth={2.25} aria-hidden />
+        <Plus
+          className={compact ? "size-3" : "size-4"}
+          strokeWidth={2.25}
+          aria-hidden
+        />
       </button>
     </div>
   );

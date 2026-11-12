@@ -10,6 +10,7 @@ import { parseBusinessDate } from "@/lib/date-db";
 import { lockOpenBill, lockOpenShift } from "@/lib/billing/lock-open-bill";
 import { recalcOpenBillOrThrow } from "@/lib/billing/recalc-bill";
 import { nextDailyNumber } from "@/lib/orders/daily-number";
+import { ensureDefaultWaterOnOrder } from "@/lib/billing/water";
 import { loadMenuLinesForOrder } from "@/lib/orders/menu-lines";
 import { nextStatus, prevStatus } from "@/lib/orders/transitions";
 import { findOpenShift } from "@/lib/shifts/helpers";
@@ -148,6 +149,16 @@ async function createOrderInTx(
       },
     },
   });
+
+  // ماء افتراضي مع أول طلب فقط — التعديل لاحقاً من صفحة الفاتورة
+  if (priorCount === 0) {
+    await ensureDefaultWaterOnOrder(tx, {
+      billId: bill.id,
+      orderId: order.id,
+      actorId: me.id,
+      guestCount: bill.guestCount,
+    });
+  }
 
   await recalcOpenBillOrThrow(tx, bill.id);
 
