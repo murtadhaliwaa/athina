@@ -25,11 +25,15 @@ import { t } from "@/lib/i18n/ar-iq";
 
 const TX = { maxWait: 10_000, timeout: 20_000 } as const;
 
+const guestCountSchema = z.number().int().min(1).max(50);
+
 const createOrderSchema = z.object({
   type: z.literal("DINE_IN"),
   tableId: z.string().uuid(),
   items: z.array(orderLineSchema).min(1),
   note: noteSchema,
+  /** يُسجَّل عند إنشاء فاتورة الطاولة لأول مرة */
+  guestCount: guestCountSchema.optional(),
 });
 
 async function getSettingsStartHour() {
@@ -49,12 +53,25 @@ async function getOrCreateOpenBill(
     tableId: string;
     shiftId: string;
     businessDate: string;
+    guestCount?: number;
   }
 ) {
   let bill = await tx.bill.findFirst({
     where: { tableId: opts.tableId, status: "OPEN" },
   });
-  if (bill) return bill;
+  if (bill) {
+    if (
+      bill.guestCount == null &&
+      typeof opts.guestCount === "number" &&
+      opts.guestCount >= 1
+    ) {
+      bill = await tx.bill.update({
+        where: { id: bill.id },
+        data: { guestCount: opts.guestCount },
+      });
+    }
+    return bill;
+  }
 
   try {
     bill = await tx.bill.create({
@@ -64,6 +81,7 @@ async function getOrCreateOpenBill(
         status: "OPEN",
         businessDate: parseBusinessDate(opts.businessDate),
         shiftId: opts.shiftId,
+        guestCount: opts.guestCount ?? null,
       },
     });
     return bill;
@@ -100,6 +118,7 @@ async function createOrderInTx(
     tableId: parsed.tableId,
     shiftId: opts.shiftId,
     businessDate: opts.businessDate,
+    guestCount: parsed.guestCount,
   });
 
   await lockOpenBill(tx, bill.id);
@@ -201,6 +220,7 @@ const addItemsSchema = z.object({
   orderId: z.string().uuid().optional(),
   items: z.array(orderLineSchema).min(1),
   note: noteSchema,
+  guestCount: guestCountSchema.optional(),
 });
 
 export async function addItemsToOrder(
@@ -243,6 +263,20 @@ export async function addItemsToOrder(
         tableId,
         items: data.items,
         note: orderNote,
+        guestCount: data.guestCount,
+      });
+    }
+
+    if (
+      data.guestCount != null &&
+      (await prisma.bill.findFirst({
+        where: { id: openBill.id, guestCount: null },
+        select: { id: true },
+      }))
+    ) {
+      await prisma.bill.update({
+        where: { id: openBill.id },
+        data: { guestCount: data.guestCount },
       });
     }
 
@@ -328,6 +362,134 @@ export async function addItemsToOrder(
     revalidatePath("/cashier");
     revalidatePath("/cashier/bills");
     return ok(result);
+  });
+}
+
+/**
+ * تعديل كمية صنف في الطلب.
+ * الكمية 0 = حذف (نفس قواعد removeOrderItem).
+ * الويتر: فقط ما أضافه وهو NEW.
+ */
+export async function adjustOrderItemQuantity(input: {
+  orderItemId: string;
+  quantity: number;
+  reason?: string;
+}): Promise<ActionResult<{ quantity: number }>> {
+  return handleAction(async () => {
+    const me = await requireUser(["WAITER", "CASHIER", "OWNER"]);
+    const schema = z.object({
+      orderItemId: z.string().uuid(),
+      quantity: z.number().int().min(0).max(99),
+      reason: reasonSchema.optional(),
+    });
+    const parsed = schema.safeParse(input);
+    if (!parsed.success) return fail(t("error.generic"));
+
+    if (parsed.data.quantity === 0) {
+      const removed = await removeOrderItem({
+        orderItemId: parsed.data.orderItemId,
+        reason: parsed.data.reason,
+      });
+      if (!removed.ok) return removed;
+      return ok({ quantity: 0 });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      const item = await tx.orderItem.findUnique({
+        where: { id: parsed.data.orderItemId },
+        select: {
+          id: true,
+          status: true,
+          quantity: true,
+          addedById: true,
+          menuItemId: true,
+          orderId: true,
+          order: {
+            select: {
+              status: true,
+              billId: true,
+              bill: { select: { status: true } },
+            },
+          },
+        },
+      });
+      if (!item || item.status !== "ACTIVE") {
+        throw new AppError("NOT_FOUND", t("error.notFound"));
+      }
+      if (item.order.bill.status !== "OPEN") {
+        throw new AppError("CONFLICT", t("bill.notOpen"));
+      }
+      if (item.quantity === parsed.data.quantity) return;
+
+      await lockOpenBill(tx, item.order.billId);
+      const isWaiterOnly = me.role === "WAITER";
+
+      if (isWaiterOnly) {
+        assertCan(me.role, "orders.remove_item_own_new");
+        if (item.addedById !== me.id || item.order.status !== "NEW") {
+          throw new AppError("FORBIDDEN", t("order.askCashier"));
+        }
+      } else {
+        assertCan(me.role, "orders.remove_item_any");
+        // الحذف الكامل (كمية 0) عبر removeOrderItem ويطلب سبباً
+      }
+
+      if (parsed.data.quantity > item.quantity) {
+        const menu = await tx.menuItem.findFirst({
+          where: { id: item.menuItemId, isActive: true },
+          select: { isAvailable: true, name: true },
+        });
+        if (!menu?.isAvailable) {
+          throw new AppError(
+            "VALIDATION",
+            t("error.itemSoldOutNamed", { name: menu?.name ?? "" }),
+          );
+        }
+      }
+
+      const updated = await tx.orderItem.updateMany({
+        where: isWaiterOnly
+          ? {
+              id: item.id,
+              status: "ACTIVE",
+              addedById: me.id,
+              order: { status: "NEW", bill: { status: "OPEN" } },
+            }
+          : {
+              id: item.id,
+              status: "ACTIVE",
+              order: { bill: { status: "OPEN" } },
+            },
+        data: { quantity: parsed.data.quantity },
+      });
+      if (updated.count !== 1) {
+        throw new AppError(
+          isWaiterOnly ? "FORBIDDEN" : "CONFLICT",
+          isWaiterOnly ? t("order.askCashier") : t("error.generic"),
+        );
+      }
+
+      await recalcOpenBillOrThrow(tx, item.order.billId);
+
+      if (!isWaiterOnly || parsed.data.quantity < item.quantity) {
+        await writeAudit(tx, {
+          actorId: me.id,
+          action: "ORDER_ITEM_QTY_CHANGED",
+          entityType: "OrderItem",
+          entityId: item.id,
+          reason: parsed.data.reason ?? t("order.waiterRemoveReason"),
+          after: {
+            from: item.quantity,
+            to: parsed.data.quantity,
+          },
+        });
+      }
+    }, TX);
+
+    revalidatePath("/waiter");
+    revalidatePath("/cashier");
+    revalidatePath("/cashier/bills");
+    return ok({ quantity: parsed.data.quantity });
   });
 }
 

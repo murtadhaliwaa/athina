@@ -14,6 +14,11 @@ export const demoBill = {
   voidReason: null as string | null,
   total: 46_800,
   tableLabel: "5",
+  guestCount: 5,
+  /** معاينة فقط — لا نستدعي setBillWater على فاتورة وهمية */
+  waterAvailable: false,
+  waterPrice: 500,
+  currentWaterQty: 2,
   hasUnserved: true,
   orders: [
     {

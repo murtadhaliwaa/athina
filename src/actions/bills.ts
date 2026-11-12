@@ -13,6 +13,8 @@ import {
   recalcOpenBillOrThrow,
 } from "@/lib/billing/recalc-bill";
 import { findOpenShift } from "@/lib/shifts/helpers";
+import { syncBillWater } from "@/lib/billing/water";
+import { getBusinessDate } from "@/lib/time";
 import { AppError, ok, fail, type ActionResult } from "@/lib/errors";
 import { handleAction, iqdSchema, reasonSchema } from "@/actions/helpers";
 import { t } from "@/lib/i18n/ar-iq";
@@ -178,6 +180,87 @@ export async function removeDiscount(input: {
 
     revalidateBillPaths(billId.data);
     return ok(undefined);
+  });
+}
+
+/** تأكيد كمية الماء قبل شاشة الدفع — يحدّث الفاتورة ويعيد الإجمالي */
+export async function setBillWater(input: {
+  billId: string;
+  waterQty: number;
+}): Promise<
+  ActionResult<{
+    total: number;
+    subtotal: number;
+    discountAmount: number;
+    waterQty: number;
+    waterPrice: number;
+  }>
+> {
+  return handleAction(async () => {
+    const me = await requireUser(["CASHIER", "OWNER"]);
+    assertCan(me.role, "bills.pay");
+    const schema = z.object({
+      billId: z.string().uuid(),
+      waterQty: z.number().int().min(0).max(50),
+    });
+    const parsed = schema.safeParse(input);
+    if (!parsed.success) return fail(t("error.generic"));
+
+    const shift = await findOpenShift();
+    if (!shift) return fail(t("shift.closed"));
+
+    const settings = await prisma.cafeSettings.findUnique({
+      where: { id: 1 },
+      select: { businessDayStartHour: true },
+    });
+    const businessDate = getBusinessDate(
+      new Date(),
+      settings?.businessDayStartHour ?? 5,
+    );
+
+    const result = await prisma.$transaction(async (tx) => {
+      await lockOpenShift(tx, shift.id);
+      await lockOpenBill(tx, parsed.data.billId);
+
+      const bill = await tx.bill.findFirst({
+        where: { id: parsed.data.billId, status: "OPEN" },
+        select: { id: true, tableId: true, guestCount: true },
+      });
+      if (!bill) throw new AppError("CONFLICT", t("bill.notOpen"));
+
+      const synced = await syncBillWater(tx, {
+        billId: bill.id,
+        tableId: bill.tableId,
+        waterQty: parsed.data.waterQty,
+        actorId: me.id,
+        shiftId: shift.id,
+        businessDate,
+        guestCount: bill.guestCount,
+      });
+
+      await writeAudit(tx, {
+        actorId: me.id,
+        action: "BILL_WATER_SET",
+        entityType: "Bill",
+        entityId: bill.id,
+        after: {
+          waterQty: synced.waterQty,
+          waterPrice: synced.waterPrice,
+          total: synced.total,
+        },
+      });
+
+      return {
+        total: synced.total,
+        subtotal: synced.subtotal,
+        discountAmount: synced.discountAmount,
+        waterQty: synced.waterQty,
+        waterPrice: synced.waterPrice,
+      };
+    }, TX);
+
+    revalidateBillPaths(parsed.data.billId);
+    return ok(result);
   });
 }
 

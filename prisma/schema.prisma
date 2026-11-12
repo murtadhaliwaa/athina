@@ -155,6 +155,8 @@ model Bill {
   voidedAt       DateTime?
   voidedById     String?       @db.Uuid
   voidReason     String?
+  /** عدد الجالسين — يقترح كمية الماء عند الدفع */
+  guestCount     Int?
 
   orders   Order[]
   payments Payment[]

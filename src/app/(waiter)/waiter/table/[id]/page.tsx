@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { getCurrentProfile } from "@/lib/auth/guard";
 import {
-  RemoveItemButton,
+  ItemQtyControls,
   TableDetailActions,
 } from "@/components/waiter/table-detail-actions";
 import { OrderStatusBadge } from "@/components/shared/order-status-badge";
@@ -109,35 +109,39 @@ export default async function WaiterTablePage({
             </div>
 
             <ul className="divide-y divide-border">
-              {order.items.map((item) => (
-                <li
-                  key={item.id}
-                  className="flex items-center justify-between gap-3 px-3.5 py-2.5"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-start gap-2">
-                      <QtyChip quantity={item.quantity} />
+              {order.items.map((item) => {
+                const canEditQty =
+                  Boolean(profile) &&
+                  item.addedById === profile?.id &&
+                  order.status === "NEW";
+                return (
+                  <li
+                    key={item.id}
+                    className="flex items-center gap-3 px-3.5 py-2.5"
+                  >
+                    <div className="min-w-0 flex-1">
                       <OrderItemLabel
                         name={item.nameSnapshot}
                         category={item.categorySnapshot}
                         note={item.note}
                       />
+                      <p className="text-muted-foreground mt-0.5 text-xs">
+                        <MoneyBdi
+                          amount={item.priceSnapshot * item.quantity}
+                        />
+                      </p>
                     </div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <span className="text-muted-foreground text-sm">
-                      <MoneyBdi
-                        amount={item.priceSnapshot * item.quantity}
+                    {canEditQty ? (
+                      <ItemQtyControls
+                        orderItemId={item.id}
+                        quantity={item.quantity}
                       />
-                    </span>
-                    {profile &&
-                    item.addedById === profile.id &&
-                    order.status === "NEW" ? (
-                      <RemoveItemButton orderItemId={item.id} />
-                    ) : null}
-                  </div>
-                </li>
-              ))}
+                    ) : (
+                      <QtyChip quantity={item.quantity} />
+                    )}
+                  </li>
+                );
+              })}
             </ul>
 
             {order.status !== "CANCELLED" ? (

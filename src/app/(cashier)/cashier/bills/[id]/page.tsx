@@ -3,6 +3,10 @@ import { BillDetailClient } from "@/components/cashier/bill-detail-client";
 import { PageHeader } from "@/components/shared/page-header";
 import { getCurrentProfile } from "@/lib/auth/guard";
 import { DEMO_BILL_ID, demoBill } from "@/lib/cashier/demo-bill";
+import {
+  countActiveWaterOnBill,
+  findWaterMenuItem,
+} from "@/lib/billing/water";
 import { prisma } from "@/lib/prisma";
 import { t } from "@/lib/i18n/ar-iq";
 
@@ -23,7 +27,7 @@ export default async function CashierBillDetailPage({
     );
   }
 
-  const [profile, bill] = await Promise.all([
+  const [profile, bill, waterItem] = await Promise.all([
     getCurrentProfile(),
     prisma.bill.findUnique({
       where: { id },
@@ -37,6 +41,7 @@ export default async function CashierBillDetailPage({
         discountReason: true,
         voidReason: true,
         total: true,
+        guestCount: true,
         table: { select: { label: true } },
         orders: {
           where: { status: { not: "CANCELLED" } },
@@ -59,6 +64,7 @@ export default async function CashierBillDetailPage({
         },
       },
     }),
+    findWaterMenuItem(prisma),
   ]);
 
   if (!bill) notFound();
@@ -67,6 +73,10 @@ export default async function CashierBillDetailPage({
   const hasUnserved = bill.orders.some(
     (o) => o.status === "NEW" || o.status === "PREPARING",
   );
+
+  const currentWaterQty = waterItem
+    ? await countActiveWaterOnBill(prisma, bill.id, waterItem.id)
+    : 0;
 
   return (
     <div>
@@ -84,6 +94,10 @@ export default async function CashierBillDetailPage({
           voidReason: bill.voidReason,
           total: bill.total,
           tableLabel: bill.table?.label ?? null,
+          guestCount: bill.guestCount,
+          waterAvailable: Boolean(waterItem),
+          waterPrice: waterItem?.price ?? 0,
+          currentWaterQty,
           hasUnserved,
           orders: bill.orders.map((o) => ({
             id: o.id,

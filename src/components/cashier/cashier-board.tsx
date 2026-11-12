@@ -10,15 +10,18 @@ import {
 } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { MoreHorizontal, Trash2, Volume2, VolumeX } from "lucide-react";
+import { MoreHorizontal, Volume2, VolumeX } from "lucide-react";
 import { toast } from "sonner";
 import {
+  adjustOrderItemQuantity,
   advanceOrderStatus,
   cancelOrder,
   clearCancelRequest,
   removeOrderItem,
   revertOrderStatus,
 } from "@/actions/orders";
+import { nextOrderItemQty } from "@/lib/orders/qty";
+import { QtyStepper } from "@/components/shared/qty-stepper";
 import { fetchCashierBoardOrders } from "@/actions/cashier-board";
 import { nextStatus } from "@/lib/orders/transitions";
 import { Button } from "@/components/ui/button";
@@ -361,47 +364,102 @@ export function CashierBoard({
                     />
                   </div>
 
-                  <ul className="mt-3 space-y-2">
-                    {order.items.map((it) => (
-                      <li
-                        key={it.id}
-                        className="flex items-center gap-2 text-sm"
-                      >
-                        <QtyChip quantity={it.quantity} />
-                        <OrderItemLabel
-                          className="flex-1"
-                          name={it.nameSnapshot}
-                          category={it.categorySnapshot}
-                          note={it.note}
-                        />
-                        {editingOrderId === order.id &&
-                        order.status !== "CANCELLED" ? (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="text-destructive size-11 shrink-0"
-                            disabled={busy}
-                            aria-label={t("action.removeItem")}
-                            onClick={() => {
-                              setRemoveReason("");
-                              setRemoveTarget({
-                                itemId: it.id,
-                                orderId: order.id,
-                              });
-                            }}
-                          >
-                            <Trash2 className="size-4" />
-                          </Button>
-                        ) : null}
-                      </li>
-                    ))}
+                  <ul className="mt-3 space-y-1">
+                    {order.items.map((it) => {
+                      const editing =
+                        editingOrderId === order.id &&
+                        order.status !== "CANCELLED" &&
+                        order.status !== "SERVED";
+                      return (
+                        <li
+                          key={it.id}
+                          className={cn(
+                            "flex items-center gap-2 rounded-xl py-1.5 text-sm",
+                            editing && "bg-secondary/50 px-2 py-2",
+                          )}
+                        >
+                          <OrderItemLabel
+                            className="min-w-0 flex-1"
+                            name={it.nameSnapshot}
+                            category={it.categorySnapshot}
+                            note={it.note}
+                          />
+                          {editing ? (
+                            <QtyStepper
+                              quantity={it.quantity}
+                              disabled={busy}
+                              decreaseLabel={
+                                it.quantity <= 1
+                                  ? t("action.removeItem")
+                                  : t("action.decreaseQty")
+                              }
+                              onDecrease={() => {
+                                if (it.quantity <= 1) {
+                                  setRemoveReason("");
+                                  setRemoveTarget({
+                                    itemId: it.id,
+                                    orderId: order.id,
+                                  });
+                                  return;
+                                }
+                                const next = nextOrderItemQty(it.quantity, -1);
+                                runOptimistic(
+                                  order.id,
+                                  (prev) =>
+                                    prev.map((o) => {
+                                      if (o.id !== order.id) return o;
+                                      return {
+                                        ...o,
+                                        items: o.items.map((item) =>
+                                          item.id === it.id
+                                            ? { ...item, quantity: next }
+                                            : item,
+                                        ),
+                                      };
+                                    }),
+                                  () =>
+                                    adjustOrderItemQuantity({
+                                      orderItemId: it.id,
+                                      quantity: next,
+                                    }),
+                                );
+                              }}
+                              onIncrease={() => {
+                                const next = nextOrderItemQty(it.quantity, 1);
+                                runOptimistic(
+                                  order.id,
+                                  (prev) =>
+                                    prev.map((o) => {
+                                      if (o.id !== order.id) return o;
+                                      return {
+                                        ...o,
+                                        items: o.items.map((item) =>
+                                          item.id === it.id
+                                            ? { ...item, quantity: next }
+                                            : item,
+                                        ),
+                                      };
+                                    }),
+                                  () =>
+                                    adjustOrderItemQuantity({
+                                      orderItemId: it.id,
+                                      quantity: next,
+                                    }),
+                                );
+                              }}
+                            />
+                          ) : (
+                            <QtyChip quantity={it.quantity} />
+                          )}
+                        </li>
+                      );
+                    })}
                   </ul>
 
-                  <div className="mt-3.5 flex items-center gap-2">
+                  <div className="mt-3.5 grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2">
                     {advance ? (
                       <Button
-                        className="h-11 min-h-11 min-w-0 flex-1 rounded-xl bg-brand-amber px-3 text-sm font-semibold text-black hover:bg-brand-amber/90"
+                        className="h-11 min-h-11 min-w-0 rounded-xl bg-brand-amber px-3 text-sm font-semibold text-black hover:bg-brand-amber/90"
                         disabled={busy}
                         onClick={() => {
                           const next = nextStatus(order.status);
@@ -419,10 +477,12 @@ export function CashierBoard({
                       >
                         {advance}
                       </Button>
-                    ) : null}
+                    ) : (
+                      <span />
+                    )}
                     <Link
                       href={`/cashier/bills/${order.billId}`}
-                      className="bg-secondary text-secondary-foreground inline-flex h-11 shrink-0 items-center justify-center rounded-xl px-3 text-sm font-semibold"
+                      className="bg-secondary text-secondary-foreground inline-flex h-11 shrink-0 items-center justify-center rounded-xl px-3.5 text-sm font-semibold"
                     >
                       {t("cashier.openBill")}
                     </Link>
