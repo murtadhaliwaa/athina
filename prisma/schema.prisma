@@ -61,6 +61,8 @@ model Profile {
   shiftsOpened  Shift[]     @relation("ShiftOpenedBy")
   paymentsTaken Payment[]
   auditLogs     AuditLog[]
+  expensesCreated Expense[] @relation("ExpenseCreatedBy")
+  expensesVoided  Expense[] @relation("ExpenseVoidedBy")
 
   @@map("profiles")
 }
@@ -297,4 +299,25 @@ model CafeSettings {
   businessDayStartHour Int     @default(5)
 
   @@map("cafe_settings")
+}
+
+/** مصروفات تشغيل المالك (مشتريات مواد…) — مستقلة عن صندوق الكاشير */
+model Expense {
+  id           String    @id @default(uuid()) @db.Uuid
+  businessDate DateTime  @db.Date
+  amount       Int
+  title        String
+  category     String
+  note         String?
+  createdById  String    @db.Uuid
+  createdBy    Profile   @relation("ExpenseCreatedBy", fields: [createdById], references: [id])
+  createdAt    DateTime  @default(now())
+  voidedAt     DateTime?
+  voidedById   String?   @db.Uuid
+  voidedBy     Profile?  @relation("ExpenseVoidedBy", fields: [voidedById], references: [id])
+  voidReason   String?
+
+  @@index([businessDate, voidedAt])
+  @@index([createdAt])
+  @@map("expenses")
 }

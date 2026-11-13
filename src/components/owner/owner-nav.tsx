@@ -6,12 +6,13 @@ import {
   BarChart3,
   Coffee,
   LayoutGrid,
-  Users,
+  Wallet,
 } from "lucide-react";
 import { OwnerMoreSheet } from "@/components/owner/owner-more-sheet";
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n/ar-iq";
 
+/** أهم ٥ للوصول السريع — الباقي في المزيد */
 const links = [
   {
     href: "/owner",
@@ -20,10 +21,10 @@ const links = [
     match: (path: string) => path === "/owner",
   },
   {
-    href: "/owner/menu",
-    label: t("nav.menu"),
-    icon: Coffee,
-    match: (path: string) => path.startsWith("/owner/menu"),
+    href: "/owner/expenses",
+    label: t("nav.expenses"),
+    icon: Wallet,
+    match: (path: string) => path.startsWith("/owner/expenses"),
   },
   {
     href: "/owner/reports/sales",
@@ -32,16 +33,17 @@ const links = [
     match: (path: string) => path.startsWith("/owner/reports"),
   },
   {
-    href: "/owner/staff",
-    label: t("nav.staff"),
-    icon: Users,
-    match: (path: string) => path.startsWith("/owner/staff"),
+    href: "/owner/menu",
+    label: t("nav.menu"),
+    icon: Coffee,
+    match: (path: string) => path.startsWith("/owner/menu"),
   },
 ];
 
 export function OwnerNav() {
   const pathname = usePathname();
   const moreActive =
+    pathname.startsWith("/owner/staff") ||
     pathname.startsWith("/owner/tables") ||
     pathname.startsWith("/owner/settings") ||
     pathname.startsWith("/owner/audit");

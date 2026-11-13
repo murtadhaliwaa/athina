@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth/guard";
-import { parseBusinessDate } from "@/lib/date-db";
+import { businessDateToIso, parseBusinessDate } from "@/lib/date-db";
 import { getBusinessDate, getBaghdadHour } from "@/lib/time";
 import { t } from "@/lib/i18n/ar-iq";
 import {
@@ -193,7 +193,7 @@ export async function getDailySalesReport(input: ReportRangeInput) {
   });
 
   return bills.map((b) => ({
-    date: b.businessDate.toISOString().slice(0, 10),
+    date: businessDateToIso(b.businessDate),
     billCount: b._count,
     subtotal: b._sum.subtotal ?? 0,
     discounts: b._sum.discountAmount ?? 0,

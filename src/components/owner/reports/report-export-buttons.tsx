@@ -11,6 +11,10 @@ type Props = {
   title: string;
   headers: string[];
   rows: (string | number)[][];
+  /** إظهار تصدير CSV — افتراضي true (تقارير المالك). المصروفات: false */
+  csv?: boolean;
+  /** default = أزرار outline | link = نص هادئ بأسلوب آبل */
+  tone?: "default" | "link";
 };
 
 function baseName(filename: string) {
@@ -219,30 +223,44 @@ async function downloadPdf(
   URL.revokeObjectURL(url);
 }
 
-export function ReportExportButtons({ filename, title, headers, rows }: Props) {
+export function ReportExportButtons({
+  filename,
+  title,
+  headers,
+  rows,
+  csv = true,
+  tone = "default",
+}: Props) {
   const [pending, startTransition] = useTransition();
   const [busyPdf, setBusyPdf] = useState(false);
 
   if (rows.length === 0) return null;
 
+  const linkBtn =
+    "h-auto rounded-none border-0 bg-transparent px-0 text-[15px] font-medium text-brand-gold shadow-none hover:bg-transparent hover:text-brand-amber";
+  const defaultBtn =
+    "h-11 rounded-xl border-border bg-transparent px-3 text-sm text-muted-foreground hover:bg-brand-gold/10 hover:text-foreground";
+
   return (
     <div className="flex flex-wrap gap-2">
+      {csv ? (
+        <Button
+          type="button"
+          variant="outline"
+          disabled={pending || busyPdf}
+          className={tone === "link" ? linkBtn : defaultBtn}
+          onClick={() =>
+            startTransition(() => downloadCsv(filename, headers, rows))
+          }
+        >
+          {t("reports.exportCsv")}
+        </Button>
+      ) : null}
       <Button
         type="button"
         variant="outline"
         disabled={pending || busyPdf}
-        className="h-11 rounded-xl border-border bg-transparent px-3 text-sm text-muted-foreground hover:bg-brand-gold/10 hover:text-foreground"
-        onClick={() =>
-          startTransition(() => downloadCsv(filename, headers, rows))
-        }
-      >
-        {t("reports.exportCsv")}
-      </Button>
-      <Button
-        type="button"
-        variant="outline"
-        disabled={pending || busyPdf}
-        className="h-11 rounded-xl border-border bg-transparent px-3 text-sm text-muted-foreground hover:bg-brand-gold/10 hover:text-foreground"
+        className={tone === "link" ? linkBtn : defaultBtn}
         onClick={() => {
           setBusyPdf(true);
           void downloadPdf(filename, title, headers, rows)
