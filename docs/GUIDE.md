@@ -948,8 +948,11 @@ coffee-app/
 - `createStaff / resetPin / changeRole / setStaffActive` (المالك) — انظر 7.2.
 - `updateSettings` (المالك): الاسم، الهاتف، العنوان، التذييل، ساعة بداية يوم العمل (0–12).
 
+### 10.5b العروض الموقوتة (`actions/offers.ts`) — المالك فقط
+انظر **القسم 22**. `createOffer` / `updateOffer` / `toggleOfferActive` — صلاحية `offers.manage`، مزامنة صنف المنيو، AuditLog، `updateTag("menu")`.
+
 ### 10.6 أحداث AuditLog (قائمة كاملة)
-`ORDER_CANCELLED` · `ORDER_ITEM_CANCELLED` (غير ما حذفه الويتر في NEW) · `ORDER_STATUS_REVERTED` · `BILL_DISCOUNT` · `BILL_DISCOUNT_REMOVED` · `BILL_PAID` · `BILL_VOID` · `SHIFT_OPENED` · `SHIFT_CLOSED` · `MENU_PRICE_CHANGED` · `MENU_ITEM_AVAILABILITY` · `STAFF_CREATED` · `STAFF_PIN_RESET` · `STAFF_ROLE_CHANGED` · `STAFF_ACTIVE_CHANGED` · `SETTINGS_UPDATED`.
+`ORDER_CANCELLED` · `ORDER_ITEM_CANCELLED` (غير ما حذفه الويتر في NEW) · `ORDER_STATUS_REVERTED` · `BILL_DISCOUNT` · `BILL_DISCOUNT_REMOVED` · `BILL_PAID` · `BILL_VOID` · `SHIFT_OPENED` · `SHIFT_CLOSED` · `MENU_PRICE_CHANGED` · `MENU_ITEM_AVAILABILITY` · `STAFF_CREATED` · `STAFF_PIN_RESET` · `STAFF_ROLE_CHANGED` · `STAFF_ACTIVE_CHANGED` · `SETTINGS_UPDATED` · `OFFER_CREATED` · `OFFER_UPDATED` · `OFFER_TOGGLED`.
 
 ---
 
@@ -1418,6 +1421,23 @@ alwaysApply: true
 | `warn.unserved` | بعد في طلبات ما انقدمت — تكمل؟ |
 
 > راجع النصوص مع العميل والموظفين فعلياً قبل التسليم؛ اللهجة تختلف بين محافظة وأخرى، وتُعدَّل من ملف واحد.
+
+---
+
+## 22. العروض الموقوتة (باقات بساعات)
+
+باقة بسعر ثابت بنافذة ساعات يومية (`Asia/Baghdad`). تبقى ظاهرة للويتر دائماً وهي مفعّلة؛ خارج النافذة تُعرض مع وسم «غير متاح بعد الساعة…» ولا تُقبل في الطلب.
+
+### النموذج
+- `Offer`: اسم، سعر Int، `startMinute`/`endMinute` (0–1439)، `isActive`، و`menuItemId` فريد يربط بصنف منيو في تصنيف نظام **«العروض»**.
+- `OfferComponent`: تسميات المحتويات للعرض فقط (`label` + `sortOrder`) — سطر الطلب يبقى **واحداً** (اسم العرض + سعر الباقة).
+- لا عبور لمنتصف الليل في v1: يُشترط `startMinute < endMinute`.
+- عند الإنشاء/التعديل: مزامنة `MenuItem.name/price/description`؛ عند الإيقاف: `MenuItem.isActive = false`.
+
+### التشغيل
+- المالك: `/owner/offers` + صلاحية `offers.manage` — Actions في `actions/offers.ts` مع AuditLog و`updateTag("menu")`.
+- الويتر: قسم «العروض» أعلى المنيو (المفعّلة كلها). خارج الوقت: بطاقة ظاهرة وغير قابلة للطلب. السعر من الخادم عبر `addItemsToOrder` / `priceSnapshot`.
+- إن انتهت النافذة والصنف ما زال في السلة: الخادم يرفض برسالة عربية.
 
 ---
 

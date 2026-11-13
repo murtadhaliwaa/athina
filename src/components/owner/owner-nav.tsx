@@ -43,6 +43,7 @@ const links = [
 export function OwnerNav() {
   const pathname = usePathname();
   const moreActive =
+    pathname.startsWith("/owner/offers") ||
     pathname.startsWith("/owner/staff") ||
     pathname.startsWith("/owner/tables") ||
     pathname.startsWith("/owner/settings") ||

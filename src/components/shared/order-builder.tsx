@@ -19,6 +19,7 @@ import { MenuItemCard } from "@/components/shared/menu-item-card";
 import { MoneyBdi } from "@/components/shared/money-bdi";
 import { PageHeader } from "@/components/shared/page-header";
 import { useRealtimeRefresh } from "@/hooks/use-realtime-refresh";
+import { isOffersCategoryName } from "@/lib/offers/constants";
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n/ar-iq";
 
@@ -67,6 +68,10 @@ type MenuCategory = {
     imagePath: string | null;
     updatedAt?: string | Date | null;
     isAvailable: boolean;
+    unavailableLabel?: string | null;
+    windowLabel?: string | null;
+    cardAccent?: string | null;
+    components?: string[];
   }[];
 };
 
@@ -249,6 +254,11 @@ export function OrderBuilder({
                   quantity={cart[item.id]?.quantity ?? 0}
                   onAdd={() => addOne(item, activeCategory?.name ?? "")}
                   priority={index < 4}
+                  badge={
+                    isOffersCategoryName(activeCategory?.name ?? "")
+                      ? t("offer.badge")
+                      : undefined
+                  }
                 />
               ))}
             </div>

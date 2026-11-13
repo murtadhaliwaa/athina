@@ -93,11 +93,41 @@ model MenuItem {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   orderItems  OrderItem[]
+  offer       Offer?
 
   @@index([categoryId, sortOrder])
   // منيو الطلب: أصناف نشطة/متاحة حسب التصنيف
   @@index([isActive, isAvailable, categoryId])
   @@map("menu_items")
+}
+
+/** باقة موقوتة: صنف منيو واحد + نافذة ساعات بغداد */
+model Offer {
+  id          String           @id @default(uuid()) @db.Uuid
+  name        String
+  price       Int
+  startMinute Int
+  endMinute   Int
+  isActive    Boolean          @default(true)
+  menuItemId  String           @unique @db.Uuid
+  menuItem    MenuItem         @relation(fields: [menuItemId], references: [id])
+  components  OfferComponent[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([isActive])
+  @@map("offers")
+}
+
+model OfferComponent {
+  id        String @id @default(uuid()) @db.Uuid
+  offerId   String @db.Uuid
+  offer     Offer  @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  label     String
+  sortOrder Int    @default(0)
+
+  @@index([offerId, sortOrder])
+  @@map("offer_components")
 }
 
 model CafeTable {

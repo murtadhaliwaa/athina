@@ -30,6 +30,7 @@ import {
 import { t } from "@/lib/i18n/ar-iq";
 
 const links = [
+  { href: "/owner/offers", label: t("nav.offers") },
   { href: "/owner/staff", label: t("nav.staff") },
   { href: "/owner/tables", label: t("nav.tables") },
   { href: "/owner/settings", label: t("nav.settings") },

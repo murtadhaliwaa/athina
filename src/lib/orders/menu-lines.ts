@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { AppError } from "@/lib/errors";
+import { isOfferWindowOpen } from "@/lib/offers/window";
 import { t } from "@/lib/i18n/ar-iq";
 
 export type OrderLineInput = {
@@ -15,9 +16,19 @@ export async function loadMenuLinesForOrder(
   const ids = [...new Set(lines.map((l) => l.menuItemId))];
   const menuItems = await tx.menuItem.findMany({
     where: { id: { in: ids } },
-    include: { category: { select: { isActive: true, name: true } } },
+    include: {
+      category: { select: { isActive: true, name: true } },
+      offer: {
+        select: {
+          isActive: true,
+          startMinute: true,
+          endMinute: true,
+        },
+      },
+    },
   });
   const map = new Map(menuItems.map((m) => [m.id, m]));
+  const now = new Date();
 
   return lines.map((line) => {
     const item = map.get(line.menuItemId);
@@ -29,6 +40,21 @@ export async function loadMenuLinesForOrder(
         "VALIDATION",
         t("error.itemSoldOutNamed", { name: item.name })
       );
+    }
+    if (item.offer) {
+      const open =
+        item.offer.isActive &&
+        isOfferWindowOpen(
+          item.offer.startMinute,
+          item.offer.endMinute,
+          now,
+        );
+      if (!open) {
+        throw new AppError(
+          "VALIDATION",
+          t("offer.endedNamed", { name: item.name }),
+        );
+      }
     }
     return {
       menuItemId: item.id,
